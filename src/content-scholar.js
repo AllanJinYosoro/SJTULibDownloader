@@ -37,10 +37,34 @@
     return resultNode.querySelector("h3.gs_rt");
   }
 
+  function textOf(node) {
+    return (node && node.textContent ? node.textContent : "").replace(/\s+/g, " ").trim();
+  }
+
+  function getTitleAnchor(titleNode) {
+    if (!titleNode) return null;
+    return titleNode.querySelector("a");
+  }
+
   function getTitleText(resultNode) {
     const titleNode = getTitleNode(resultNode);
     if (!titleNode) return "";
-    return core.stripScholarPrefix(titleNode.textContent || "").trim();
+
+    const anchor = getTitleAnchor(titleNode);
+    if (anchor) {
+      return core.stripScholarPrefix(textOf(anchor)).trim();
+    }
+
+    const plainText = Array.from(titleNode.childNodes)
+      .filter(function (node) {
+        return node.nodeType === Node.TEXT_NODE;
+      })
+      .map(function (node) {
+        return node.textContent || "";
+      })
+      .join(" ");
+
+    return core.stripScholarPrefix(plainText).trim();
   }
 
   function resultIdForNode(resultNode, index) {

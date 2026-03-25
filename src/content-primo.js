@@ -27,6 +27,46 @@
     }
   }
 
+  function firstNonEmpty(values) {
+    for (let i = 0; i < values.length; i += 1) {
+      if (values[i]) return values[i];
+    }
+    return "";
+  }
+
+  function extractUrlFromNode(node) {
+    if (!node || !node.getAttribute) return "";
+
+    const direct = firstNonEmpty([
+      node.getAttribute("href"),
+      node.getAttribute("ng-href"),
+      node.getAttribute("data-href"),
+      node.getAttribute("data-url"),
+    ]);
+    const directUrl = toAbsUrl(direct || "");
+    if (directUrl && !directUrl.toLowerCase().startsWith("javascript:")) {
+      return directUrl;
+    }
+
+    const nestedLink = node.querySelector
+      ? node.querySelector("a[href], a[ng-href], a[data-href], a[data-url]")
+      : null;
+    if (!nestedLink) return "";
+
+    const nested = firstNonEmpty([
+      nestedLink.getAttribute("href"),
+      nestedLink.getAttribute("ng-href"),
+      nestedLink.getAttribute("data-href"),
+      nestedLink.getAttribute("data-url"),
+    ]);
+    const nestedUrl = toAbsUrl(nested || "");
+    if (nestedUrl && !nestedUrl.toLowerCase().startsWith("javascript:")) {
+      return nestedUrl;
+    }
+
+    return "";
+  }
+
   function toActionElement(node) {
     if (!node) return null;
     return node.closest("a, button, [role='button'], md-icon-button") || node;
@@ -165,11 +205,7 @@
 
   function getActionUrl(action) {
     if (!action) return "";
-    if (action.tagName === "A") {
-      const href = toAbsUrl(action.getAttribute("href") || "");
-      if (href && !href.toLowerCase().startsWith("javascript:")) return href;
-    }
-    return "";
+    return extractUrlFromNode(action);
   }
 
   function triggerAction(action, urlHint) {
