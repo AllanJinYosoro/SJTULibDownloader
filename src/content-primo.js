@@ -82,7 +82,35 @@
     return Boolean(el.onclick);
   }
 
+  function findPreferredFulltextAction(container) {
+    const directButtons = Array.from(container.querySelectorAll("button.arrow-link-button"));
+    const directHit = directButtons.find(function (btn) {
+      return isFulltextText(btn.innerText || textOf(btn));
+    });
+    if (directHit) return directHit;
+
+    const fulltextStatus = Array.from(
+      container.querySelectorAll(".availability-status.fulltext")
+    );
+    const statusHit = fulltextStatus.find(function (node) {
+      return isFulltextText(node.innerText || textOf(node));
+    });
+    if (statusHit) {
+      const btn =
+        statusHit.closest("button") ||
+        statusHit.querySelector("button") ||
+        statusHit.closest("[ng-click]") ||
+        statusHit.parentElement.closest("button[ng-click]");
+      if (btn) return btn;
+    }
+
+    return null;
+  }
+
   function findFulltextAction(container) {
+    const preferred = findPreferredFulltextAction(container);
+    if (preferred) return preferred;
+
     const nodes = Array.from(
       container.querySelectorAll("a, button, [role='button'], md-icon-button, span, div")
     );
