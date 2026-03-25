@@ -107,12 +107,7 @@
       },
       function (resp) {
         if (chrome.runtime.lastError) {
-          setButtonState(
-            btn,
-            "is-failed",
-            "启动失败",
-            chrome.runtime.lastError.message
-          );
+          setButtonState(btn, "is-failed", "启动失败", chrome.runtime.lastError.message);
           return;
         }
 
@@ -171,12 +166,11 @@
       if (msg.payload.status === "downloaded") {
         setButtonState(btn, "is-success", "已下载", msg.payload.reason || "下载任务已创建");
       } else if (msg.payload.status === "manual_required") {
-        setButtonState(
-          btn,
-          "is-manual",
-          "请手动下载",
-          msg.payload.reason || "已跳转到目标页面"
-        );
+        const reasonText = msg.payload.reason || "已跳转到目标页面";
+        const manualText = /登录|登入|sign in|log in/i.test(reasonText)
+          ? "请手动登录"
+          : "请手动下载";
+        setButtonState(btn, "is-manual", manualText, reasonText);
       } else {
         setButtonState(btn, "is-failed", "失败重试", msg.payload.reason || "下载失败");
       }

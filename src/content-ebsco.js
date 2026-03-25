@@ -2,6 +2,8 @@
 (function () {
   "use strict";
 
+  const LOGIN_ALERT_KEY = "__sjtuLibLoginAlertShown";
+
   function textOf(node) {
     return (node && node.textContent ? node.textContent : "").replace(/\s+/g, " ").trim();
   }
@@ -53,6 +55,47 @@
     });
   }
 
+  function looksLikeLoginGate() {
+    const text = textOf(document.body).toLowerCase();
+    if (!text) return false;
+
+    const hasInstitutionPrompt =
+      text.includes("通过您的机构访问") ||
+      text.includes("access through your institution") ||
+      text.includes("sign in through your institution") ||
+      text.includes("institutional access");
+
+    const hasLoginControl =
+      Boolean(document.querySelector("input[type='password']")) ||
+      Boolean(document.querySelector("input[name*='user' i], input[name*='email' i]")) ||
+      Array.from(document.querySelectorAll("a, button")).some(function (el) {
+        const label = textOf(el).toLowerCase();
+        return (
+          label.includes("登录") ||
+          label.includes("登入") ||
+          label.includes("sign in") ||
+          label.includes("log in")
+        );
+      });
+
+    const isDetailGateUrl =
+      /openurl\.ebsco\.com/i.test(location.hostname) || /detailv2/i.test(location.href);
+
+    return isDetailGateUrl && (hasInstitutionPrompt || hasLoginControl);
+  }
+
+  function alertLoginRequired() {
+    if (window[LOGIN_ALERT_KEY]) return;
+    window[LOGIN_ALERT_KEY] = true;
+    setTimeout(function () {
+      try {
+        window.alert("已到达 EBSCO 页面，但当前需要手动登录机构账号。登录后再继续下载。");
+      } catch (err) {
+        // ignore
+      }
+    }, 80);
+  }
+
   function sendStep(flowId, payload) {
     chrome.runtime.sendMessage({
       type: "STEP_RESULT",
@@ -63,6 +106,15 @@
         },
         payload
       ),
+    });
+  }
+
+  function sendManualLogin(flowId) {
+    alertLoginRequired();
+    sendStep(flowId, {
+      ok: false,
+      manualRequired: true,
+      detail: "已到达 EBSCO 页面，请手动登录账号后继续",
     });
   }
 
@@ -90,13 +142,19 @@
           pdfUrl: pdfUrl,
           detail: "点击后提取到 PDF 链接",
         });
-      } else {
-        sendStep(flowId, {
-          ok: false,
-          manualRequired: true,
-          detail: "已点击 PDF 控件，但未提取到可下载链接",
-        });
+        return;
       }
+
+      if (looksLikeLoginGate()) {
+        sendManualLogin(flowId);
+        return;
+      }
+
+      sendStep(flowId, {
+        ok: false,
+        manualRequired: true,
+        detail: "已点击 PDF 入口，但未提取到可下载链接",
+      });
     }, 3500);
   }
 
@@ -108,7 +166,7 @@
       sendStep(flowId, {
         ok: true,
         pdfUrl: pdfUrl,
-        detail: "已提取 PDF 链接",
+        detail: "已提取到 PDF 链接",
       });
       return;
     }
@@ -119,6 +177,11 @@
       return;
     }
 
+    if (looksLikeLoginGate()) {
+      sendManualLogin(flowId);
+      return;
+    }
+
     sendStep(flowId, {
       ok: false,
       manualRequired: true,
@@ -126,9 +189,12 @@
     });
   }
 
-  chrome.runtime.onMessage.addListener(function (msg) {
+  chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     if (!msg || msg.type !== "REQUEST_ACTION" || !msg.payload) return;
     if (msg.payload.action !== "extract_pdf") return;
+    if (typeof sendResponse === "function") {
+      sendResponse({ ok: true });
+    }
     handleExtractPdf(msg);
   });
 })();

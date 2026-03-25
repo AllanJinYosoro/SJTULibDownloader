@@ -3,6 +3,8 @@
   "use strict";
 
   const core = SJTULibCore;
+  const RETRY_INTERVAL_MS = 1200;
+  const MAX_WAIT_MS = 15000;
 
   function textOf(node) {
     return (node && node.textContent ? node.textContent : "").replace(/\s+/g, " ").trim();
@@ -78,7 +80,9 @@
     if (!el) return false;
     if (el.tagName === "A") return true;
     if (el.tagName === "BUTTON") return true;
-    if (el.getAttribute("role") === "button") return true;
+    if (el.getAttribute("role") === "button" || el.getAttribute("role") === "link") {
+      return true;
+    }
     return Boolean(el.onclick);
   }
 
@@ -98,9 +102,11 @@
     if (statusHit) {
       const btn =
         statusHit.closest("button") ||
+        statusHit.closest("[role='button']") ||
+        statusHit.closest("[role='link']") ||
         statusHit.querySelector("button") ||
         statusHit.closest("[ng-click]") ||
-        statusHit.parentElement.closest("button[ng-click]");
+        (statusHit.parentElement && statusHit.parentElement.closest("button[ng-click]"));
       if (btn) return btn;
     }
 
@@ -112,7 +118,7 @@
     if (preferred) return preferred;
 
     const nodes = Array.from(
-      container.querySelectorAll("a, button, [role='button'], md-icon-button, span, div")
+      container.querySelectorAll("a, button, [role='button'], [role='link'], md-icon-button, span, div")
     );
     const hit = nodes.find(function (n) {
       return isFulltextText(textOf(n)) && isActionableNode(n);
@@ -149,6 +155,8 @@
       container.querySelector("a[data-qa='displayTitle']") ||
       container.querySelector("h2 a") ||
       container.querySelector("h3 a") ||
+      container.querySelector(".item-title a") ||
+      container.querySelector("[data-field-selector='title']") ||
       container.querySelector("a[title]");
 
     const title = textOf(titleNode);
@@ -171,10 +179,8 @@
 
     if (candidates.length > 0) return candidates;
 
-    // Fallback: if no structured result containers are found,
-    // derive candidates from full-text links and nearby title-like nodes.
     const allClickables = Array.from(
-      document.querySelectorAll("a, button, [role='button'], md-icon-button, span")
+      document.querySelectorAll("a, button, [role='button'], [role='link'], md-icon-button, span")
     );
     allClickables.forEach(function (node) {
       if (!isFulltextText(textOf(node))) return;
@@ -185,7 +191,9 @@
       const titleNode =
         block.querySelector("h2 a") ||
         block.querySelector("h3 a") ||
+        block.querySelector(".item-title a") ||
         block.querySelector("a[data-qa='displayTitle']") ||
+        block.querySelector("[data-field-selector='title']") ||
         block.querySelector("a[title]");
       const title = textOf(titleNode);
       if (!title) return;
@@ -236,22 +244,34 @@
     return extractUrlFromNode(action);
   }
 
+  function getNavigationHint(action) {
+    const url = getActionUrl(action);
+    if (!url || !action) return "";
+    if (action.tagName !== "A") return "";
+    if (String(action.getAttribute("target") || "").toLowerCase() === "_blank") return "";
+    return url;
+  }
+
   function triggerAction(action, urlHint) {
     if (!action) return;
 
     setTimeout(function () {
+      let triggered = false;
       try {
         action.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
         action.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
         action.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        triggered = true;
       } catch (err) {
         // ignore and fallback
       }
 
-      try {
-        action.click();
-      } catch (err) {
-        // ignore and fallback
+      if (!triggered) {
+        try {
+          action.click();
+        } catch (err) {
+          // ignore and fallback
+        }
       }
 
       if (urlHint) {
@@ -267,43 +287,69 @@
     }, 120);
   }
 
+  function waitForBestCandidate(targetTitle, deadlineAt, done) {
+    const best = findBestCandidate(targetTitle);
+    if (best && best.fulltextAction) {
+      done(best, "");
+      return;
+    }
+
+    if (Date.now() >= deadlineAt) {
+      if (best && !best.fulltextAction) {
+        done(best, '最相近结果缺少“在线全文”入口: ' + best.title);
+      } else {
+        done(null, "Primo 页面未找到可用候选结果");
+      }
+      return;
+    }
+
+    setTimeout(function () {
+      waitForBestCandidate(targetTitle, deadlineAt, done);
+    }, RETRY_INTERVAL_MS);
+  }
+
   function handleFindPrimoMatch(msg) {
     const flowId = msg.payload.flowId;
     const targetTitle =
       (msg.payload.data && (msg.payload.data.titleNormalized || msg.payload.data.titleRaw)) || "";
 
-    const best = findBestCandidate(targetTitle);
-    if (!best) {
-      sendStep(flowId, {
-        ok: false,
-        detail: "Primo 页面未找到可用候选结果",
-      });
-      return;
-    }
+    waitForBestCandidate(targetTitle, Date.now() + MAX_WAIT_MS, function (best, errorText) {
+      if (!best) {
+        sendStep(flowId, {
+          ok: false,
+          detail: errorText || "Primo 页面未找到可用候选结果",
+        });
+        return;
+      }
 
-    if (!best.fulltextAction) {
-      sendStep(flowId, {
-        ok: false,
-        detail: "最相近结果缺少“在线全文”入口: " + best.title,
-      });
-      return;
-    }
+      if (!best.fulltextAction) {
+        sendStep(flowId, {
+          ok: false,
+          detail: errorText || ('最相近结果缺少“在线全文”入口: ' + best.title),
+        });
+        return;
+      }
 
-    const nextUrl = getActionUrl(best.fulltextAction);
-    sendStep(flowId, {
-      ok: true,
-      selectedTitle: best.title,
-      score: Number(best.score.toFixed(4)),
-      nextUrl: nextUrl || undefined,
-      detail: "已点击最匹配结果的在线全文",
+      const nextUrl = getNavigationHint(best.fulltextAction);
+      sendStep(flowId, {
+        ok: true,
+        selectedTitle: best.title,
+        score: Number(best.score.toFixed(4)),
+        nextUrl: nextUrl || undefined,
+        detail: "已点击最匹配结果的在线全文",
+      });
+
+      triggerAction(best.fulltextAction, nextUrl);
     });
-
-    triggerAction(best.fulltextAction, nextUrl);
   }
 
   chrome.runtime.onMessage.addListener(function (msg) {
     if (!msg || msg.type !== "REQUEST_ACTION" || !msg.payload) return;
     if (msg.payload.action !== "find_primo_match") return;
+    const sendResponse = arguments[2];
+    if (typeof sendResponse === "function") {
+      sendResponse({ ok: true });
+    }
     handleFindPrimoMatch(msg);
   });
 })();
