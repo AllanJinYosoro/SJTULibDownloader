@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "SJTU Library Downloader for Scholar",
+  "version": "0.1.0",
+  "description": "在 Google Scholar 结果页一键跳转并尝试从交大图书馆渠道下载论文 PDF。",
+  "permissions": ["tabs", "scripting", "storage", "downloads"],
+  "host_permissions": [
+    "https://scholar.google.com/*",
+    "https://*.exlibrisgroup.com.cn/*",
+    "https://*.ebscohost.com/*",
+    "https://*.ebsco.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://scholar.google.com/*"],
+      "js": ["src/core.js", "src/content-scholar.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.exlibrisgroup.com.cn/primo-explore/*"],
+      "js": ["src/core.js", "src/content-primo.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.exlibrisgroup.com.cn/*"],
+      "js": ["src/core.js", "src/content-sfx.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*.ebscohost.com/*",
+        "https://*.ebsco.com/*"
+      ],
+      "js": ["src/core.js", "src/content-ebsco.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "SJTU Library Downloader"
+  }
+}

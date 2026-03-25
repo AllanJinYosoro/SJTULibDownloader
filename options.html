@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SJTU Downloader 配置</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        background: #f6f8fb;
+        color: #1f2937;
+      }
+      .wrap {
+        max-width: 760px;
+        margin: 28px auto;
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 24px;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 20px;
+      }
+      p {
+        margin: 0 0 16px;
+        line-height: 1.6;
+      }
+      .field {
+        margin-bottom: 18px;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      input[type="text"] {
+        width: 100%;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+      .hint {
+        margin-top: 8px;
+        color: #4b5563;
+        font-size: 13px;
+      }
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      button {
+        border: 1px solid #0b57d0;
+        background: #0b57d0;
+        color: white;
+        border-radius: 8px;
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      #status {
+        font-size: 13px;
+        color: #065f46;
+      }
+      .warn {
+        border-left: 4px solid #f59e0b;
+        background: #fffbeb;
+        padding: 10px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+      }
+      code {
+        background: #f3f4f6;
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>SJTU Downloader 配置</h1>
+      <p>设置下载文件路径偏好。默认值先填为你要求的 Windows 下载目录。</p>
+
+      <div class="field">
+        <label for="downloadPath">下载路径</label>
+        <input id="downloadPath" type="text" value="C:\\Users\\Allan\\Downloads\\" />
+        <div class="hint">默认：<code>C:\Users\Allan\Downloads\</code></div>
+      </div>
+
+      <div class="warn">
+        Chrome 扩展 API 限制：下载文件名只能使用“相对默认下载目录”的路径。<br />
+        如果这里填写绝对路径（如 <code>C:\Users\Allan\Downloads\</code>），插件会自动回退到默认下载目录根。
+      </div>
+
+      <div class="actions" style="margin-top: 18px">
+        <button id="saveBtn" type="button">保存</button>
+        <span id="status"></span>
+      </div>
+    </div>
+
+    <script src="src/options.js"></script>
+  </body>
+</html>
