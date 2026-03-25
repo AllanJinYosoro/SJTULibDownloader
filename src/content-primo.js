@@ -27,6 +27,31 @@
     }
   }
 
+  function toActionElement(node) {
+    if (!node) return null;
+    return node.closest("a, button, [role='button'], md-icon-button") || node;
+  }
+
+  function isActionableNode(node) {
+    if (!node) return false;
+    const el = toActionElement(node);
+    if (!el) return false;
+    if (el.tagName === "A") return true;
+    if (el.tagName === "BUTTON") return true;
+    if (el.getAttribute("role") === "button") return true;
+    return Boolean(el.onclick);
+  }
+
+  function findFulltextAction(container) {
+    const nodes = Array.from(
+      container.querySelectorAll("a, button, [role='button'], md-icon-button, span, div")
+    );
+    const hit = nodes.find(function (n) {
+      return isFulltextText(textOf(n)) && isActionableNode(n);
+    });
+    return hit ? toActionElement(hit) : null;
+  }
+
   function getContainerCandidates() {
     const selectors = [
       "prm-brief-result-container",
@@ -61,14 +86,9 @@
     const title = textOf(titleNode);
     if (!title) return null;
 
-    const links = Array.from(container.querySelectorAll("a"));
-    const fulltextLink = links.find(function (a) {
-      return isFulltextText(textOf(a));
-    });
-
     return {
       title: title,
-      fulltextLink: fulltextLink || null,
+      fulltextAction: findFulltextAction(container),
       container: container,
     };
   }
@@ -85,10 +105,15 @@
 
     // Fallback: if no structured result containers are found,
     // derive candidates from full-text links and nearby title-like nodes.
-    const allLinks = Array.from(document.querySelectorAll("a"));
-    allLinks.forEach(function (link) {
-      if (!isFulltextText(textOf(link))) return;
-      const block = link.closest("li, div, article, md-list-item") || document.body;
+    const allClickables = Array.from(
+      document.querySelectorAll("a, button, [role='button'], md-icon-button, span")
+    );
+    allClickables.forEach(function (node) {
+      if (!isFulltextText(textOf(node))) return;
+      const action = toActionElement(node);
+      if (!isActionableNode(action)) return;
+
+      const block = node.closest("li, div, article, md-list-item") || document.body;
       const titleNode =
         block.querySelector("h2 a") ||
         block.querySelector("h3 a") ||
@@ -98,7 +123,7 @@
       if (!title) return;
       candidates.push({
         title: title,
-        fulltextLink: link,
+        fulltextAction: action,
         container: block,
       });
     });
@@ -117,7 +142,7 @@
         best = {
           score: score,
           title: c.title,
-          fulltextLink: c.fulltextLink,
+          fulltextAction: c.fulltextAction,
         };
       }
     });
@@ -138,20 +163,44 @@
     });
   }
 
-  function navigateTo(link) {
-    if (!link) return false;
-    const href = toAbsUrl(link.getAttribute("href") || "");
-    if (href) {
-      setTimeout(function () {
-        location.href = href;
-      }, 120);
-      return true;
+  function getActionUrl(action) {
+    if (!action) return "";
+    if (action.tagName === "A") {
+      const href = toAbsUrl(action.getAttribute("href") || "");
+      if (href && !href.toLowerCase().startsWith("javascript:")) return href;
     }
+    return "";
+  }
+
+  function triggerAction(action, urlHint) {
+    if (!action) return;
 
     setTimeout(function () {
-      link.click();
+      try {
+        action.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        action.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        action.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      } catch (err) {
+        // ignore and fallback
+      }
+
+      try {
+        action.click();
+      } catch (err) {
+        // ignore and fallback
+      }
+
+      if (urlHint) {
+        setTimeout(function () {
+          if (location.href === urlHint) return;
+          try {
+            location.href = urlHint;
+          } catch (err) {
+            // ignore
+          }
+        }, 300);
+      }
     }, 120);
-    return true;
   }
 
   function handleFindPrimoMatch(msg) {
@@ -168,7 +217,7 @@
       return;
     }
 
-    if (!best.fulltextLink) {
+    if (!best.fulltextAction) {
       sendStep(flowId, {
         ok: false,
         detail: "最相近结果缺少“在线全文”入口: " + best.title,
@@ -176,7 +225,7 @@
       return;
     }
 
-    const nextUrl = toAbsUrl(best.fulltextLink.getAttribute("href") || "");
+    const nextUrl = getActionUrl(best.fulltextAction);
     sendStep(flowId, {
       ok: true,
       selectedTitle: best.title,
@@ -185,7 +234,7 @@
       detail: "已点击最匹配结果的在线全文",
     });
 
-    navigateTo(best.fulltextLink);
+    triggerAction(best.fulltextAction, nextUrl);
   }
 
   chrome.runtime.onMessage.addListener(function (msg) {

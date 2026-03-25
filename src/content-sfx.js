@@ -20,17 +20,20 @@
   }
 
   function findEbscoLink() {
-    const links = Array.from(document.querySelectorAll("a"));
+    const clickables = Array.from(
+      document.querySelectorAll("a, button, [role='button'], md-icon-button, span")
+    );
 
-    const preferred = links.find(function (a) {
-      const txt = textOf(a);
+    const preferred = clickables.find(function (el) {
+      const txt = textOf(el);
       return txt.toLowerCase().includes("full text available via") && isEbscoText(txt);
     });
-    if (preferred) return preferred;
+    if (preferred) return preferred.closest("a, button, [role='button'], md-icon-button");
 
-    return links.find(function (a) {
-      return isEbscoText(textOf(a));
+    const any = clickables.find(function (el) {
+      return isEbscoText(textOf(el));
     });
+    return any ? any.closest("a, button, [role='button'], md-icon-button") : null;
   }
 
   function sendStep(flowId, payload) {
@@ -48,7 +51,7 @@
 
   function openLink(link) {
     if (!link) return false;
-    const href = toAbsUrl(link.getAttribute("href") || "");
+    const href = toAbsUrl((link.getAttribute && link.getAttribute("href")) || "");
     if (href) {
       setTimeout(function () {
         location.href = href;
@@ -56,6 +59,11 @@
       return true;
     }
     setTimeout(function () {
+      try {
+        link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      } catch (err) {
+        // ignore
+      }
       link.click();
     }, 120);
     return true;

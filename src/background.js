@@ -99,6 +99,18 @@ if (typeof SJTULibCore === "undefined" && typeof importScripts === "function") {
     });
   }
 
+  function tabsUpdate(tabId, updateProps) {
+    return new Promise(function (resolve, reject) {
+      chrome.tabs.update(tabId, updateProps, function (tab) {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(tab);
+      });
+    });
+  }
+
   function sendMessageToTab(tabId, message) {
     return new Promise(function (resolve, reject) {
       chrome.tabs.sendMessage(tabId, message, function (response) {
@@ -290,6 +302,12 @@ if (typeof SJTULibCore === "undefined" && typeof importScripts === "function") {
       selectedTitle: payload.selectedTitle || "",
       score: payload.score,
     });
+
+    if (payload.nextUrl && /^https?:\/\//i.test(payload.nextUrl)) {
+      tabsUpdate(flow.workTabId, { url: payload.nextUrl }).catch(function () {
+        // If direct update fails, fallback to click-driven navigation in content script.
+      });
+    }
   }
 
   function handleSfxStep(flow, payload) {
@@ -302,6 +320,12 @@ if (typeof SJTULibCore === "undefined" && typeof importScripts === "function") {
     flow.currentStep = "waiting_ebsco";
     flow.stepStartedAt = Date.now();
     sendProgress(flow, "已进入 EBSCO，正在提取 PDF 链接");
+
+    if (payload.nextUrl && /^https?:\/\//i.test(payload.nextUrl)) {
+      tabsUpdate(flow.workTabId, { url: payload.nextUrl }).catch(function () {
+        // If direct update fails, fallback to click-driven navigation in content script.
+      });
+    }
   }
 
   async function handleEbscoStep(flow, payload) {
@@ -487,6 +511,21 @@ if (typeof SJTULibCore === "undefined" && typeof importScripts === "function") {
     const flow = FLOWS.get(flowId);
     if (!flow || flow.status !== "running") return;
     failFlow(flow, "流程页被关闭，任务已终止");
+  });
+
+  chrome.tabs.onCreated.addListener(function (tab) {
+    if (!tab || typeof tab.openerTabId !== "number" || typeof tab.id !== "number") return;
+    const flowId = FLOW_BY_WORK_TAB.get(tab.openerTabId);
+    if (!flowId) return;
+
+    const flow = FLOWS.get(flowId);
+    if (!flow || flow.status !== "running") return;
+
+    FLOW_BY_WORK_TAB.delete(tab.openerTabId);
+    FLOW_BY_WORK_TAB.set(tab.id, flowId);
+    flow.workTabId = tab.id;
+    flow.stepStartedAt = Date.now();
+    sendProgress(flow, "检测到新标签页，流程已自动接管");
   });
 
   setInterval(function () {
